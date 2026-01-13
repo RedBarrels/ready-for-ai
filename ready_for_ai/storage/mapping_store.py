@@ -103,12 +103,25 @@ class MappingStore:
         return key
 
     def _hash_value(self, value: str) -> str:
-        """Create bcrypt hash of a value."""
-        return bcrypt.hashpw(value.encode(), bcrypt.gensalt()).decode()
+        """Create bcrypt hash of a value.
+
+        Pre-hashes with SHA-256 to handle values longer than bcrypt's 72-byte limit.
+        """
+        # bcrypt has a 72-byte limit, so pre-hash long values with SHA-256
+        value_bytes = value.encode()
+        if len(value_bytes) > 72:
+            value_bytes = hashlib.sha256(value_bytes).hexdigest().encode()
+        return bcrypt.hashpw(value_bytes, bcrypt.gensalt()).decode()
 
     def _verify_hash(self, value: str, hashed: str) -> bool:
-        """Verify a value against its bcrypt hash."""
-        return bcrypt.checkpw(value.encode(), hashed.encode())
+        """Verify a value against its bcrypt hash.
+
+        Pre-hashes with SHA-256 to handle values longer than bcrypt's 72-byte limit.
+        """
+        value_bytes = value.encode()
+        if len(value_bytes) > 72:
+            value_bytes = hashlib.sha256(value_bytes).hexdigest().encode()
+        return bcrypt.checkpw(value_bytes, hashed.encode())
 
     def _encrypt_value(self, value: str) -> str:
         """Encrypt a value using AES (Fernet)."""
