@@ -256,11 +256,18 @@ class PIIDetector:
 
         # Words that are often misdetected by NLP
         false_positive_words = {
+            # English
             'ip', 'ssn', 'api', 'url', 'email', 'phone', 'address', 'client',
             'contact', 'team', 'project', 'internal', 'slack', 'channel',
             'employee', 'corporate', 'card', 'best', 'regards', 'from', 'to',
             'cc', 'date', 'summary', 'executive', 'technical', 'details',
-            'confidential', 'notes', 'information', 'members'
+            'confidential', 'notes', 'information', 'members',
+            # Ukrainian common words that might be misdetected
+            'проект', 'команда', 'клієнт', 'контакт', 'адреса', 'телефон',
+            'інформація', 'дата', 'деталі', 'учасники', 'працівник', 'відділ',
+            'компанія', 'організація', 'договір', 'угода', 'документ', 'звіт',
+            'замовник', 'виконавець', 'сторона', 'предмет', 'умови', 'стаття',
+            'пункт', 'розділ', 'додаток', 'підпис', 'печатка', 'реквізити'
         }
 
         for ent in doc.ents:
@@ -286,7 +293,8 @@ class PIIDetector:
             # For PERSON entities, extract just the name part (stop at dash, newline, etc)
             if ent.label_ == 'PERSON':
                 # Split on common separators and take first part
-                name_match = re.match(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', clean_text)
+                # Supports both Latin and Cyrillic characters
+                name_match = re.match(r'^([A-ZА-ЯҐЄІЇ][a-zа-яґєії\']+(?:\s+[A-ZА-ЯҐЄІЇ][a-zа-яґєії\']+)*)', clean_text)
                 if name_match:
                     clean_text = name_match.group(1)
                 # Skip if it's too long (likely a false positive)
@@ -351,7 +359,8 @@ class PIIDetector:
 
         # Pattern for two consecutive capitalized words (First Last name pattern)
         # This catches names regardless of whether they're in common name lists
-        name_pattern = re.compile(r'\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b')
+        # Supports both Latin (A-Za-z) and Cyrillic (А-Яа-яґєіїҐЄІЇ) characters
+        name_pattern = re.compile(r'\b([A-ZА-ЯҐЄІЇ][a-zа-яґєії\']+)\s+([A-ZА-ЯҐЄІЇ][a-zа-яґєії\']+)\b')
 
         for match in name_pattern.finditer(text):
             span = (match.start(), match.end())

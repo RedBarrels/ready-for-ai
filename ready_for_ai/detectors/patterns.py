@@ -73,21 +73,40 @@ class PatternMatcher:
     # Context keywords that suggest certain PII types
     CONTEXT_KEYWORDS = {
         PIIType.PERSON_NAME: [
+            # English
             'mr', 'mrs', 'ms', 'dr', 'prof', 'dear', 'hi', 'hello',
             'regards', 'sincerely', 'from', 'to', 'cc', 'bcc',
-            'employee', 'manager', 'director', 'ceo', 'cto', 'cfo'
+            'employee', 'manager', 'director', 'ceo', 'cto', 'cfo',
+            # Ukrainian titles and contexts
+            'пан', 'пані', 'панна', 'др', 'проф', 'шановний', 'шановна',
+            'вітаю', 'привіт', 'з повагою', 'від', 'кому', 'до',
+            'працівник', 'менеджер', 'директор', 'керівник', 'начальник',
+            'співробітник', 'колега', 'представник', 'голова', 'заступник'
         ],
         PIIType.COMPANY_NAME: [
+            # English
             'inc', 'llc', 'ltd', 'corp', 'company', 'enterprise',
-            'client', 'customer', 'partner', 'vendor', 'supplier'
+            'client', 'customer', 'partner', 'vendor', 'supplier',
+            # Ukrainian company terms
+            'тов', 'пп', 'ат', 'пат', 'зат', 'фоп', 'компанія', 'підприємство',
+            'організація', 'корпорація', 'холдинг', 'група', 'клієнт',
+            'замовник', 'партнер', 'постачальник', 'контрагент'
         ],
         PIIType.PROJECT_NAME: [
+            # English
             'project', 'initiative', 'program', 'campaign', 'sprint',
-            'milestone', 'release', 'version', 'phase'
+            'milestone', 'release', 'version', 'phase',
+            # Ukrainian
+            'проект', 'ініціатива', 'програма', 'кампанія', 'спринт',
+            'етап', 'реліз', 'версія', 'фаза'
         ],
         PIIType.TEAM_NAME: [
+            # English
             'team', 'squad', 'group', 'department', 'division',
-            'unit', 'org', 'organization'
+            'unit', 'org', 'organization',
+            # Ukrainian
+            'команда', 'група', 'відділ', 'департамент', 'підрозділ',
+            'сектор', 'управління', 'служба'
         ],
     }
 
@@ -133,9 +152,10 @@ class PatternMatcher:
             return candidates
 
         # Look for capitalized words/phrases near context keywords
+        # Support both Latin (A-Z) and Cyrillic (А-ЯҐЄІЇ) capital letters
         keyword_pattern = '|'.join(re.escape(k) for k in keywords)
         keyword_regex = re.compile(
-            rf'\b({keyword_pattern})\b[:\s]+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)',
+            rf'\b({keyword_pattern})\b[:\s]+([A-ZА-ЯҐЄІЇ][A-Za-zА-Яа-яґєіїҐЄІЇ\']+(?:\s+[A-ZА-ЯҐЄІЇ][A-Za-zА-Яа-яґєіїҐЄІЇ\']+)*)',
             re.IGNORECASE
         )
 
@@ -169,6 +189,7 @@ class PatternMatcher:
 
 # Common name lists for detection (can be extended)
 COMMON_FIRST_NAMES = {
+    # English names
     'james', 'john', 'robert', 'michael', 'william', 'david', 'richard',
     'joseph', 'thomas', 'charles', 'mary', 'patricia', 'jennifer', 'linda',
     'elizabeth', 'barbara', 'susan', 'jessica', 'sarah', 'karen', 'nancy',
@@ -179,10 +200,21 @@ COMMON_FIRST_NAMES = {
     'ryan', 'jacob', 'gary', 'nicholas', 'eric', 'jonathan', 'stephen',
     'larry', 'justin', 'scott', 'brandon', 'benjamin', 'samuel', 'raymond',
     'gregory', 'frank', 'alexander', 'patrick', 'jack', 'dennis', 'jerry',
+    # Ukrainian names (male)
+    'олександр', 'андрій', 'артем', 'богдан', 'василь', 'віктор', 'віталій',
+    'володимир', 'дмитро', 'євген', 'іван', 'ігор', 'максим', 'микола',
+    'михайло', 'назар', 'олег', 'павло', 'петро', 'роман', 'руслан',
+    'сергій', 'степан', 'тарас', 'юрій', 'ярослав', 'денис', 'костянтин',
+    # Ukrainian names (female)
+    'анна', 'вікторія', 'галина', 'дарина', 'ірина', 'катерина', 'лариса',
+    'людмила', 'марія', 'наталія', 'оксана', 'олена', 'ольга', 'світлана',
+    'соломія', 'софія', 'тетяна', 'юлія', 'яна', 'валентина', 'надія',
+    'леся', 'христина', 'зоряна', 'любов', 'анастасія', 'діана', 'аліна',
     # Add more as needed
 }
 
 COMMON_LAST_NAMES = {
+    # English names
     'smith', 'johnson', 'williams', 'brown', 'jones', 'garcia', 'miller',
     'davis', 'rodriguez', 'martinez', 'hernandez', 'lopez', 'gonzalez',
     'wilson', 'anderson', 'thomas', 'taylor', 'moore', 'jackson', 'martin',
@@ -191,5 +223,13 @@ COMMON_LAST_NAMES = {
     'wright', 'scott', 'torres', 'nguyen', 'hill', 'flores', 'green',
     'adams', 'nelson', 'baker', 'hall', 'rivera', 'campbell', 'mitchell',
     'carter', 'roberts', 'gomez', 'phillips', 'evans', 'turner', 'diaz',
+    # Ukrainian surnames
+    'шевченко', 'бондаренко', 'коваленко', 'бойко', 'ткаченко', 'кравченко',
+    'олійник', 'шевчук', 'поліщук', 'бондар', 'ткачук', 'мельник', 'мороз',
+    'лисенко', 'савченко', 'руденко', 'петренко', 'кузьменко', 'павленко',
+    'марченко', 'іваненко', 'левченко', 'клименко', 'пономаренко', 'гончаренко',
+    'литвиненко', 'гриценко', 'кравчук', 'сидоренко', 'федоренко', 'тимченко',
+    'ковальчук', 'костенко', 'даниленко', 'козак', 'гончар', 'швець', 'хоменко',
+    'панченко', 'кравець', 'юрченко', 'василенко', 'харченко', 'романенко',
     # Add more as needed
 }
