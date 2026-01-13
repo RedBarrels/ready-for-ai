@@ -1,0 +1,126 @@
+/* Custom styles for Ready for AI */
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: #4b5563;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+/* Focus styles */
+textarea:focus,
+input:focus,
+button:focus {
+    outline: none;
+}
+
+/* Drop zone active state */
+#drop-zone.drag-over {
+    border-color: #6366f1;
+    background-color: #f5f3ff;
+}
+
+.dark #drop-zone.drag-over {
+    background-color: rgba(99, 102, 241, 0.1);
+}
+
+/* Toast animations */
+#toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+#toast.success {
+    background-color: #10b981;
+    color: white;
+}
+
+#toast.error {
+    background-color: #ef4444;
+    color: white;
+}
+
+#toast.info {
+    background-color: #6366f1;
+    color: white;
+}
+
+/* Textarea placeholder */
+textarea::placeholder {
+    color: #9ca3af;
+}
+
+.dark textarea::placeholder {
+    color: #6b7280;
+}
+
+/* Button hover effects */
+button {
+    transition: all 0.15s ease;
+}
+
+/* Disabled state */
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* File input hover */
+#drop-zone:hover {
+    border-color: #6366f1;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Loading spinner */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

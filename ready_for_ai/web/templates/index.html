@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ready for AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        'primary-dark': '#4f46e5',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen transition-colors duration-200">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Ready for AI</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Redact PII before sending to AI</p>
+            </div>
+            <button id="theme-toggle" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                <svg id="theme-icon-light" class="w-5 h-5 text-gray-600 dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                </svg>
+                <svg id="theme-icon-dark" class="w-5 h-5 text-gray-300 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                </svg>
+            </button>
+        </header>
+
+        <!-- Main Content - Two Panel Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Input Panel -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="font-medium text-gray-900 dark:text-white">Input</h2>
+                </div>
+                <div class="p-4">
+                    <!-- File Drop Zone -->
+                    <div id="drop-zone" class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center mb-4 transition-colors hover:border-primary dark:hover:border-primary cursor-pointer">
+                        <input type="file" id="file-input" class="hidden" accept=".docx,.pdf,.txt,.md,.xlsx,.pptx">
+                        <svg class="w-10 h-10 mx-auto text-gray-400 dark:text-gray-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <span class="font-medium text-primary">Click to upload</span> or drag and drop
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                            DOCX, PDF, TXT, MD, XLSX, PPTX
+                        </p>
+                        <p id="selected-file" class="text-sm text-primary font-medium mt-2 hidden"></p>
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="relative mb-4">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-200 dark:border-gray-700"></div>
+                        </div>
+                        <div class="relative flex justify-center">
+                            <span class="px-2 bg-white dark:bg-gray-800 text-xs text-gray-500">or paste text</span>
+                        </div>
+                    </div>
+
+                    <!-- Text Input -->
+                    <textarea id="input-text" class="w-full h-48 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-gray-900 dark:text-gray-100 placeholder-gray-400" placeholder="Paste your text here..."></textarea>
+
+                    <!-- Redact Button -->
+                    <button id="redact-btn" class="w-full mt-4 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span>Redact</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Output Panel -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h2 class="font-medium text-gray-900 dark:text-white">Redacted Output</h2>
+                    <div id="stats-badge" class="hidden text-xs px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full"></div>
+                </div>
+                <div class="p-4">
+                    <div id="output-placeholder" class="h-64 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
+                        Redacted content will appear here
+                    </div>
+                    <textarea id="output-text" class="hidden w-full h-64 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg resize-none text-gray-900 dark:text-gray-100" readonly></textarea>
+
+                    <!-- Action Buttons -->
+                    <div id="output-actions" class="hidden flex gap-2 mt-4">
+                        <button id="copy-btn" class="flex-1 px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                            Copy
+                        </button>
+                        <button id="download-btn" class="hidden flex-1 px-4 py-2 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Restore Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="font-medium text-gray-900 dark:text-white">Restore AI Response</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Paste the AI's response to restore original values</p>
+            </div>
+            <div class="p-4">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- AI Response Input -->
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">AI Response (with placeholders)</label>
+                        <textarea id="ai-response-input" class="w-full h-40 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg resize-none text-gray-900 dark:text-gray-100 placeholder-gray-400" placeholder="Paste the AI's response here..."></textarea>
+                    </div>
+                    <!-- Restored Output -->
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Restored Output</label>
+                        <textarea id="restored-output" class="w-full h-40 px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg resize-none text-gray-900 dark:text-gray-100" readonly placeholder="Restored text will appear here..."></textarea>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button id="restore-btn" class="px-4 py-2 text-sm bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg class="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                        </svg>
+                        Restore
+                    </button>
+                    <button id="copy-restored-btn" class="hidden px-4 py-2 text-sm border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <p id="restore-status" class="hidden text-xs text-gray-500 dark:text-gray-400 mt-2"></p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-8 text-center text-xs text-gray-400 dark:text-gray-500">
+            Session data is stored temporarily and cleared when you close this page.
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg px-6 py-4 flex items-center gap-3">
+            <svg class="animate-spin w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-sm text-gray-700 dark:text-gray-300">Processing...</span>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all transform translate-y-2 opacity-0"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
