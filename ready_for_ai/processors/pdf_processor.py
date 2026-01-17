@@ -9,11 +9,67 @@ import pdfplumber
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from PyPDF2 import PdfReader, PdfWriter
 
 from ..detectors.pii_detector import PIIDetector, DetectionResult
 from ..detectors.patterns import PIIMatch, PIIType
 from ..storage.mapping_store import MappingStore
+
+
+# Unicode font registration for proper rendering of non-ASCII characters
+_UNICODE_FONT_NAME = None
+
+
+def _get_unicode_font_path() -> Optional[str]:
+    """Find a Unicode-compatible TrueType font on the system."""
+    font_paths = [
+        # Linux (Debian/Ubuntu)
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        # Linux (Arch/Fedora)
+        '/usr/share/fonts/TTF/DejaVuSans.ttf',
+        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+        # macOS
+        '/Library/Fonts/Arial Unicode.ttf',
+        '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+        '/Library/Fonts/DejaVuSans.ttf',
+        # Windows
+        'C:/Windows/Fonts/arial.ttf',
+        'C:/Windows/Fonts/DejaVuSans.ttf',
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _register_unicode_font() -> str:
+    """Register a Unicode-compatible font with ReportLab."""
+    global _UNICODE_FONT_NAME
+
+    if _UNICODE_FONT_NAME is not None:
+        return _UNICODE_FONT_NAME
+
+    font_path = _get_unicode_font_path()
+    if font_path:
+        try:
+            pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
+            _UNICODE_FONT_NAME = 'UnicodeFont'
+            return _UNICODE_FONT_NAME
+        except Exception:
+            pass
+
+    # Fallback to Helvetica (ASCII only)
+    _UNICODE_FONT_NAME = 'Helvetica'
+    return _UNICODE_FONT_NAME
+
+
+def get_pdf_font() -> str:
+    """Get the font name to use for PDF generation."""
+    return _register_unicode_font()
 
 
 @dataclass
@@ -173,6 +229,9 @@ class PdfProcessor:
         This creates a simple text PDF. For more complex layouts,
         consider using a more sophisticated PDF library.
         """
+        font_name = get_pdf_font()
+        font_size = 10
+
         c = canvas.Canvas(output_path, pagesize=letter)
         width, height = letter
 
@@ -183,7 +242,7 @@ class PdfProcessor:
 
             # Write text to page
             text_object = c.beginText(0.75 * inch, height - 0.75 * inch)
-            text_object.setFont("Helvetica", 10)
+            text_object.setFont(font_name, font_size)
 
             # Split into lines and write
             lines = page_text.split('\n')
@@ -195,7 +254,7 @@ class PdfProcessor:
 
                 for word in words:
                     test_line = f"{current_line} {word}".strip()
-                    if c.stringWidth(test_line, "Helvetica", 10) < max_width:
+                    if c.stringWidth(test_line, font_name, font_size) < max_width:
                         current_line = test_line
                     else:
                         if current_line:
@@ -210,7 +269,7 @@ class PdfProcessor:
                     c.drawText(text_object)
                     c.showPage()
                     text_object = c.beginText(0.75 * inch, height - 0.75 * inch)
-                    text_object.setFont("Helvetica", 10)
+                    text_object.setFont(font_name, font_size)
 
             c.drawText(text_object)
             c.showPage()
@@ -293,6 +352,9 @@ class PdfRestorer:
 
     def _create_pdf(self, pages_text: List[str], output_path: str):
         """Create PDF from text pages."""
+        font_name = get_pdf_font()
+        font_size = 10
+
         c = canvas.Canvas(output_path, pagesize=letter)
         width, height = letter
 
@@ -302,7 +364,7 @@ class PdfRestorer:
                 continue
 
             text_object = c.beginText(0.75 * inch, height - 0.75 * inch)
-            text_object.setFont("Helvetica", 10)
+            text_object.setFont(font_name, font_size)
 
             lines = page_text.split('\n')
             for line in lines:
@@ -312,7 +374,7 @@ class PdfRestorer:
 
                 for word in words:
                     test_line = f"{current_line} {word}".strip()
-                    if c.stringWidth(test_line, "Helvetica", 10) < max_width:
+                    if c.stringWidth(test_line, font_name, font_size) < max_width:
                         current_line = test_line
                     else:
                         if current_line:
@@ -326,7 +388,7 @@ class PdfRestorer:
                     c.drawText(text_object)
                     c.showPage()
                     text_object = c.beginText(0.75 * inch, height - 0.75 * inch)
-                    text_object.setFont("Helvetica", 10)
+                    text_object.setFont(font_name, font_size)
 
             c.drawText(text_object)
             c.showPage()

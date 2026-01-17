@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Ready for AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -222,6 +223,78 @@
                 <span class="text-xs text-gray-500">Session data is stored temporarily and cleared when you close this page</span>
             </div>
         </footer>
+    </div>
+
+    <!-- Uncertain PII Review Modal -->
+    <div id="uncertain-modal" class="hidden fixed inset-0 bg-cyber-900/95 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-cyber-800 rounded-2xl w-full max-w-lg mx-4 border border-neon-purple/30 shadow-[0_0_50px_rgba(191,0,255,0.2)] overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-neon-purple/20 bg-gradient-to-r from-neon-purple/10 to-transparent">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-neon-purple shadow-[0_0_10px_rgba(191,0,255,0.8)] animate-pulse"></div>
+                        <h3 class="font-semibold text-white">Review Uncertain Detection</h3>
+                    </div>
+                    <span id="uncertain-progress" class="text-xs text-gray-500 bg-cyber-700 px-2 py-1 rounded-full">1 of 5</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-1 ml-4">Is this sensitive information that should be redacted?</p>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6">
+                <div class="space-y-4">
+                    <!-- PII Type -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Type</span>
+                        <span id="uncertain-type" class="text-sm text-neon-purple font-medium bg-neon-purple/10 px-3 py-1 rounded-full">person_name</span>
+                    </div>
+
+                    <!-- PII Value -->
+                    <div class="flex items-start gap-3">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 pt-1">Value</span>
+                        <span id="uncertain-value" class="text-lg text-neon-cyan font-bold">John Smith</span>
+                    </div>
+
+                    <!-- Confidence -->
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Confidence</span>
+                        <div class="flex items-center gap-2">
+                            <div class="w-24 h-2 bg-cyber-700 rounded-full overflow-hidden">
+                                <div id="uncertain-confidence-bar" class="h-full bg-gradient-to-r from-neon-cyan to-neon-purple rounded-full" style="width: 65%"></div>
+                            </div>
+                            <span id="uncertain-confidence" class="text-sm text-gray-400">65%</span>
+                        </div>
+                    </div>
+
+                    <!-- Context -->
+                    <div class="flex items-start gap-3">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 pt-1">Context</span>
+                        <p id="uncertain-context" class="text-sm text-gray-400 bg-cyber-900/50 px-3 py-2 rounded-lg flex-1 font-mono">...contacted <mark class="bg-neon-cyan/20 text-neon-cyan px-1 rounded">John Smith</mark> regarding...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Actions -->
+            <div class="px-6 py-4 border-t border-cyber-600 bg-cyber-900/30">
+                <div class="flex gap-3">
+                    <button id="uncertain-yes" class="flex-1 px-4 py-2.5 text-sm font-bold bg-gradient-to-r from-neon-cyan to-neon-blue text-cyber-900 rounded-xl hover:shadow-[0_0_20px_rgba(0,245,255,0.4)] transition-all duration-200 flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        Yes, redact
+                    </button>
+                    <button id="uncertain-no" class="flex-1 px-4 py-2.5 text-sm font-medium border border-cyber-600 text-gray-300 rounded-xl hover:border-neon-pink/50 hover:text-neon-pink hover:shadow-[0_0_15px_rgba(255,0,170,0.2)] transition-all duration-200 flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        No, keep
+                    </button>
+                    <button id="uncertain-skip" class="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-300 transition-all duration-200">
+                        Skip
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Loading Overlay -->

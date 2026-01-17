@@ -3,6 +3,9 @@
 // State
 let currentSessionId = null;
 let hasFile = false;
+let uncertainMatches = [];
+let currentUncertainIndex = 0;
+let totalUncertainCount = 0;
 
 // DOM Elements
 const dropZone = document.getElementById('drop-zone');
@@ -24,6 +27,29 @@ const restoreStatus = document.getElementById('restore-status');
 const loadingOverlay = document.getElementById('loading-overlay');
 const toast = document.getElementById('toast');
 const themeToggle = document.getElementById('theme-toggle');
+
+// Uncertain modal elements
+const uncertainModal = document.getElementById('uncertain-modal');
+const uncertainProgress = document.getElementById('uncertain-progress');
+const uncertainType = document.getElementById('uncertain-type');
+const uncertainValue = document.getElementById('uncertain-value');
+const uncertainConfidence = document.getElementById('uncertain-confidence');
+const uncertainConfidenceBar = document.getElementById('uncertain-confidence-bar');
+const uncertainContext = document.getElementById('uncertain-context');
+const uncertainYesBtn = document.getElementById('uncertain-yes');
+const uncertainNoBtn = document.getElementById('uncertain-no');
+const uncertainSkipBtn = document.getElementById('uncertain-skip');
+
+// CSRF token handling
+function getCsrfToken() {
+    // Try meta tag first
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (metaToken) return metaToken;
+
+    // Fall back to cookie
+    const cookieMatch = document.cookie.match(/csrf_token=([^;]+)/);
+    return cookieMatch ? cookieMatch[1] : null;
+}
 
 // Theme handling
 function initTheme() {
@@ -124,6 +150,94 @@ fileInput.addEventListener('change', (e) => {
 // Double-click to clear file
 selectedFile.addEventListener('dblclick', clearFile);
 
+// Uncertain modal functions
+function showUncertainModal() {
+    if (uncertainMatches.length === 0) {
+        hideUncertainModal();
+        return;
+    }
+
+    const match = uncertainMatches[currentUncertainIndex];
+    if (!match) {
+        hideUncertainModal();
+        return;
+    }
+
+    // Update modal content
+    uncertainProgress.textContent = `${currentUncertainIndex + 1} of ${totalUncertainCount}`;
+    uncertainType.textContent = match.pii_type.replace(/_/g, ' ');
+    uncertainValue.textContent = match.text;
+
+    const confidencePercent = Math.round(match.confidence * 100);
+    uncertainConfidence.textContent = `${confidencePercent}%`;
+    uncertainConfidenceBar.style.width = `${confidencePercent}%`;
+
+    // Format context with highlighted value
+    const context = match.context || '...';
+    const highlightedContext = context.replace(
+        match.text,
+        `<mark class="bg-neon-cyan/20 text-neon-cyan px-1 rounded">${match.text}</mark>`
+    );
+    uncertainContext.innerHTML = highlightedContext;
+
+    uncertainModal.classList.remove('hidden');
+}
+
+function hideUncertainModal() {
+    uncertainModal.classList.add('hidden');
+}
+
+async function handleUncertainDecision(decision) {
+    if (uncertainMatches.length === 0) {
+        hideUncertainModal();
+        return;
+    }
+
+    const match = uncertainMatches[currentUncertainIndex];
+
+    try {
+        const response = await fetch('/api/confirm-uncertain', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
+            body: JSON.stringify({
+                session_id: currentSessionId,
+                match_index: match.index,
+                decision: decision,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to process decision');
+        }
+
+        // Update remaining matches
+        uncertainMatches = data.remaining_matches || [];
+
+        if (decision === 'yes' && data.redaction_added) {
+            showToast(`"${match.text}" will be redacted`, 'success');
+        } else if (decision === 'no') {
+            showToast(`"${match.text}" marked as safe`, 'info');
+        }
+
+        // Move to next or close modal
+        if (uncertainMatches.length > 0) {
+            currentUncertainIndex = 0;
+            showUncertainModal();
+        } else {
+            hideUncertainModal();
+            showToast('All uncertain items reviewed', 'success');
+        }
+
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
 // Redact
 async function redact() {
     const file = fileInput.files[0];
@@ -145,12 +259,18 @@ async function redact() {
 
             response = await fetch('/api/redact', {
                 method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken(),
+                },
                 body: formData,
             });
         } else {
             response = await fetch('/api/redact', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
                 body: JSON.stringify({ text }),
             });
         }
@@ -193,10 +313,24 @@ async function redact() {
 
         showToast(`Redacted ${stats.total_redactions} items`, 'success');
 
-    } catch (error) {
-        showToast(error.message, 'error');
-    } finally {
+        // Handle uncertain matches
+        uncertainMatches = data.uncertain || [];
+        totalUncertainCount = uncertainMatches.length;
+        currentUncertainIndex = 0;
+
         hideLoading();
+
+        // Show uncertain modal if there are uncertain matches
+        if (uncertainMatches.length > 0) {
+            setTimeout(() => {
+                showToast(`${uncertainMatches.length} uncertain detection(s) need review`, 'info');
+                showUncertainModal();
+            }, 500);
+        }
+
+    } catch (error) {
+        hideLoading();
+        showToast(error.message, 'error');
     }
 }
 
@@ -219,7 +353,10 @@ async function restore() {
     try {
         const response = await fetch('/api/restore', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+            },
             body: JSON.stringify({
                 session_id: currentSessionId,
                 text: text,
@@ -281,6 +418,11 @@ copyRestoredBtn.addEventListener('click', () => {
 
 downloadBtn.addEventListener('click', downloadFile);
 
+// Uncertain modal event listeners
+uncertainYesBtn.addEventListener('click', () => handleUncertainDecision('yes'));
+uncertainNoBtn.addEventListener('click', () => handleUncertainDecision('no'));
+uncertainSkipBtn.addEventListener('click', () => handleUncertainDecision('skip'));
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
     // Ctrl/Cmd + Enter to redact
@@ -291,13 +433,24 @@ document.addEventListener('keydown', (e) => {
             restore();
         }
     }
+
+    // Handle uncertain modal shortcuts
+    if (!uncertainModal.classList.contains('hidden')) {
+        if (e.key === 'y' || e.key === 'Y') {
+            handleUncertainDecision('yes');
+        } else if (e.key === 'n' || e.key === 'N') {
+            handleUncertainDecision('no');
+        } else if (e.key === 's' || e.key === 'S' || e.key === 'Escape') {
+            handleUncertainDecision('skip');
+        }
+    }
 });
 
 // Clear session on page unload
 window.addEventListener('beforeunload', () => {
     if (currentSessionId) {
-        // Use sendBeacon for reliable cleanup
-        navigator.sendBeacon(`/api/session/${currentSessionId}`, JSON.stringify({ _method: 'DELETE' }));
+        // Use sendBeacon for reliable cleanup - POST is now supported
+        navigator.sendBeacon(`/api/session/${currentSessionId}`);
     }
 });
 

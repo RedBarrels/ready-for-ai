@@ -10,3 +10,5 @@ pyyaml>=6.0
 flask>=3.0.0
 openpyxl>=3.1.0
 python-pptx>=0.6.21
+Flask-WTF>=1.2.1
+Flask-Limiter>=3.5.0

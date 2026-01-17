@@ -6,12 +6,16 @@ import tempfile
 import webbrowser
 from datetime import datetime, timedelta
 from threading import Timer
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
 from flask import Flask, render_template, request, jsonify, send_file
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-from ..detectors.pii_detector import PIIDetector
+from ..detectors.pii_detector import PIIDetector, DetectionResult
+from ..detectors.patterns import PIIMatch, PIIType
 from ..storage.mapping_store import MappingStore
 from ..storage.learning_store import LearningStore
 from ..processors import (
@@ -25,20 +29,44 @@ from ..processors import (
 
 
 @dataclass
+class UncertainMatch:
+    """An uncertain PII match awaiting user decision."""
+    index: int
+    text: str
+    pii_type: str
+    confidence: float
+    context: str
+    start: int
+    end: int
+
+
+@dataclass
 class Session:
     """A redaction session."""
     id: str
     mapping_store: MappingStore
+    detector: PIIDetector
+    original_text: Optional[str] = None
     original_filename: Optional[str] = None
     original_format: Optional[str] = None
     redacted_file_path: Optional[str] = None
     redacted_text: Optional[str] = None
+    uncertain_matches: List[UncertainMatch] = field(default_factory=list)
+    pending_uncertain_index: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: datetime = field(default_factory=lambda: datetime.utcnow() + timedelta(hours=1))
 
 
 # In-memory session storage
 sessions: Dict[str, Session] = {}
+
+# Initialize CSRF protection and rate limiter (will be initialized with app)
+csrf = CSRFProtect()
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "100 per hour"],
+    storage_uri="memory://",
+)
 
 
 def cleanup_expired_sessions():
@@ -54,6 +82,15 @@ def cleanup_expired_sessions():
                 pass
 
 
+def _validate_session_id(session_id: str) -> bool:
+    """Validate that session_id is a valid UUID format."""
+    try:
+        uuid.UUID(session_id)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 def create_app() -> Flask:
     """Create and configure the Flask application."""
     app = Flask(
@@ -62,7 +99,14 @@ def create_app() -> Flask:
         static_folder='static',
     )
 
+    # Security configuration
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', os.urandom(24).hex())
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
+    app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # 1 hour CSRF token validity
+
+    # Initialize extensions
+    csrf.init_app(app)
+    limiter.init_app(app)
 
     # Initialize learning store
     learning_store = LearningStore()
@@ -76,6 +120,17 @@ def create_app() -> Flask:
             learned_safe=set(learned_data['safe']),
         )
 
+    @app.after_request
+    def set_csrf_cookie(response):
+        """Set CSRF token in cookie for JavaScript access."""
+        response.set_cookie(
+            'csrf_token',
+            generate_csrf(),
+            samesite='Strict',
+            httponly=False,  # Needs to be accessible by JS
+        )
+        return response
+
     @app.route('/')
     def index():
         """Serve the main page."""
@@ -83,6 +138,7 @@ def create_app() -> Flask:
         return render_template('index.html')
 
     @app.route('/api/supported-formats')
+    @limiter.limit("100 per minute")
     def supported_formats():
         """Get list of supported file formats."""
         return jsonify({
@@ -90,6 +146,7 @@ def create_app() -> Flask:
         })
 
     @app.route('/api/redact', methods=['POST'])
+    @limiter.limit("10 per minute")
     def redact():
         """Redact PII from text or file."""
         cleanup_expired_sessions()
@@ -118,6 +175,29 @@ def create_app() -> Flask:
                     file.save(tmp.name)
                     input_path = tmp.name
 
+                # Read original text for uncertain detection
+                original_text = None
+                try:
+                    with open(input_path, 'r', encoding='utf-8') as f:
+                        original_text = f.read()
+                except Exception:
+                    pass
+
+                # Detect PII first to get uncertain matches
+                uncertain_matches = []
+                if original_text:
+                    detection_result = detector.detect(original_text)
+                    for i, match in enumerate(detection_result.uncertain):
+                        uncertain_matches.append(UncertainMatch(
+                            index=i,
+                            text=match.text,
+                            pii_type=match.pii_type.value,
+                            confidence=match.confidence,
+                            context=match.context or "",
+                            start=match.start,
+                            end=match.end,
+                        ))
+
                 # Get processor
                 processor = get_processor(
                     input_path,
@@ -143,10 +223,13 @@ def create_app() -> Flask:
                 session = Session(
                     id=session_id,
                     mapping_store=mapping_store,
+                    detector=detector,
+                    original_text=original_text,
                     original_filename=filename,
                     original_format=ext,
                     redacted_file_path=output_path,
                     redacted_text=redacted_text,
+                    uncertain_matches=uncertain_matches,
                 )
                 sessions[session_id] = session
 
@@ -160,6 +243,16 @@ def create_app() -> Flask:
                     },
                     'has_file': True,
                     'filename': filename.replace(ext, f'_redacted{ext}'),
+                    'uncertain': [
+                        {
+                            'index': m.index,
+                            'text': m.text,
+                            'pii_type': m.pii_type,
+                            'confidence': m.confidence,
+                            'context': m.context,
+                        }
+                        for m in uncertain_matches
+                    ],
                 })
 
             elif request.is_json and 'text' in request.json:
@@ -168,6 +261,20 @@ def create_app() -> Flask:
 
                 if not text.strip():
                     return jsonify({'error': 'No text provided'}), 400
+
+                # Detect PII first to get uncertain matches
+                detection_result = detector.detect(text)
+                uncertain_matches = []
+                for i, match in enumerate(detection_result.uncertain):
+                    uncertain_matches.append(UncertainMatch(
+                        index=i,
+                        text=match.text,
+                        pii_type=match.pii_type.value,
+                        confidence=match.confidence,
+                        context=match.context or "",
+                        start=match.start,
+                        end=match.end,
+                    ))
 
                 # Use text processor
                 processor = TextProcessor(
@@ -182,9 +289,12 @@ def create_app() -> Flask:
                 session = Session(
                     id=session_id,
                     mapping_store=mapping_store,
+                    detector=detector,
+                    original_text=text,
                     original_filename=None,
                     original_format='.txt',
                     redacted_text=redacted_text,
+                    uncertain_matches=uncertain_matches,
                 )
                 sessions[session_id] = session
 
@@ -197,6 +307,16 @@ def create_app() -> Flask:
                         'uncertain': stats['uncertain'],
                     },
                     'has_file': False,
+                    'uncertain': [
+                        {
+                            'index': m.index,
+                            'text': m.text,
+                            'pii_type': m.pii_type,
+                            'confidence': m.confidence,
+                            'context': m.context,
+                        }
+                        for m in uncertain_matches
+                    ],
                 })
 
             else:
@@ -205,7 +325,88 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @app.route('/api/confirm-uncertain', methods=['POST'])
+    @limiter.limit("30 per minute")
+    def confirm_uncertain():
+        """Confirm or reject an uncertain PII detection."""
+        if not request.is_json:
+            return jsonify({'error': 'JSON required'}), 400
+
+        session_id = request.json.get('session_id')
+        match_index = request.json.get('match_index')
+        decision = request.json.get('decision')  # 'yes', 'no', 'skip'
+        pii_type_override = request.json.get('pii_type')  # Optional type override
+
+        if not session_id or not _validate_session_id(session_id):
+            return jsonify({'error': 'Invalid session_id'}), 400
+
+        if match_index is None:
+            return jsonify({'error': 'match_index required'}), 400
+
+        if decision not in ('yes', 'no', 'skip'):
+            return jsonify({'error': 'decision must be yes, no, or skip'}), 400
+
+        session = sessions.get(session_id)
+        if not session:
+            return jsonify({'error': 'Session not found or expired'}), 404
+
+        # Find the uncertain match
+        match = None
+        for m in session.uncertain_matches:
+            if m.index == match_index:
+                match = m
+                break
+
+        if not match:
+            return jsonify({'error': 'Match not found'}), 404
+
+        # Process decision
+        redaction_added = False
+        if decision == 'yes':
+            # User confirmed it's PII - add to mapping and learn
+            pii_type = pii_type_override or match.pii_type
+            placeholder = session.mapping_store.add_mapping(match.text, pii_type)
+
+            # Learn this as PII
+            try:
+                learning_store.learn_pii(match.text, pii_type)
+            except Exception:
+                pass
+
+            # Update redacted text by replacing this match
+            if session.redacted_text and session.original_text:
+                # Re-process with the new mapping
+                session.redacted_text = session.redacted_text  # Will be updated on next process
+            redaction_added = True
+
+        elif decision == 'no':
+            # User confirmed it's NOT PII - learn as safe
+            try:
+                learning_store.learn_safe(match.text)
+            except Exception:
+                pass
+
+        # Remove from pending list
+        session.uncertain_matches = [m for m in session.uncertain_matches if m.index != match_index]
+
+        return jsonify({
+            'success': True,
+            'redaction_added': redaction_added,
+            'remaining': len(session.uncertain_matches),
+            'remaining_matches': [
+                {
+                    'index': m.index,
+                    'text': m.text,
+                    'pii_type': m.pii_type,
+                    'confidence': m.confidence,
+                    'context': m.context,
+                }
+                for m in session.uncertain_matches
+            ],
+        })
+
     @app.route('/api/restore', methods=['POST'])
+    @limiter.limit("20 per minute")
     def restore():
         """Restore placeholders in text."""
         if not request.is_json:
@@ -214,8 +415,8 @@ def create_app() -> Flask:
         session_id = request.json.get('session_id')
         text = request.json.get('text')
 
-        if not session_id:
-            return jsonify({'error': 'session_id required'}), 400
+        if not session_id or not _validate_session_id(session_id):
+            return jsonify({'error': 'Invalid session_id'}), 400
 
         if not text:
             return jsonify({'error': 'text required'}), 400
@@ -237,8 +438,12 @@ def create_app() -> Flask:
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/download/<session_id>')
+    @limiter.limit("30 per minute")
     def download(session_id: str):
         """Download redacted file."""
+        if not _validate_session_id(session_id):
+            return jsonify({'error': 'Invalid session_id'}), 400
+
         session = sessions.get(session_id)
         if not session:
             return jsonify({'error': 'Session not found or expired'}), 404
@@ -259,9 +464,14 @@ def create_app() -> Flask:
             download_name=download_name,
         )
 
-    @app.route('/api/session/<session_id>', methods=['DELETE'])
+    @app.route('/api/session/<session_id>', methods=['DELETE', 'POST'])
+    @limiter.limit("30 per minute")
+    @csrf.exempt  # Exempt for sendBeacon which can't include CSRF token
     def delete_session(session_id: str):
-        """Delete a session."""
+        """Delete a session. Accepts both DELETE and POST for sendBeacon compatibility."""
+        if not _validate_session_id(session_id):
+            return jsonify({'error': 'Invalid session_id'}), 400
+
         session = sessions.pop(session_id, None)
         if session and session.redacted_file_path:
             try:
